@@ -7,97 +7,42 @@
 body {
   margin:0;
   font-family:Arial;
+  background:#0f2027;
+  color:white;
   display:flex;
   height:100vh;
-  background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
-  color:white;
 }
 
-/* SIDEBAR */
-#sidebar {
-  width:220px;
-  background:rgba(0,0,0,0.4);
-  backdrop-filter:blur(10px);
-  padding:10px;
-}
-
-/* MAIN */
 #main {
   flex:1;
   display:flex;
   flex-direction:column;
 }
 
-#topbar {
-  padding:10px;
-  background:rgba(0,0,0,0.3);
-  display:flex;
-  justify-content:space-between;
-}
-
 #messages {
   flex:1;
   overflow-y:auto;
-  padding:15px;
+  padding:10px;
 }
 
 .msg {
-  display:flex;
-  gap:10px;
-  margin-bottom:10px;
-  transition:0.2s;
-}
-.msg:hover { transform:scale(1.02); }
-
-.msg-content {
-  background:rgba(0,0,0,0.4);
+  background:#222;
+  margin:5px;
   padding:10px;
-  border-radius:12px;
-  box-shadow:0 5px 15px rgba(0,0,0,0.5);
+  border-radius:10px;
 }
 
-/* INPUT */
 #form {
   display:flex;
-  padding:10px;
-  gap:10px;
 }
 
 input {
   flex:1;
-  padding:12px;
-  border:none;
-  border-radius:12px;
-  background:rgba(0,0,0,0.4);
-  color:white;
+  padding:10px;
 }
 
 button {
-  padding:12px;
-  border:none;
-  border-radius:12px;
-  background:linear-gradient(45deg,#5865f2,#7b8cff);
-  color:white;
-  cursor:pointer;
-}
-
-/* AUTH */
-#auth, #profile {
-  position:absolute;
-  top:0;left:0;right:0;bottom:0;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  background:#000;
-}
-
-.card {
-  background:rgba(0,0,0,0.6);
-  padding:25px;
-  border-radius:15px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
+  padding:10px;
 }
 </style>
 </head>
@@ -105,38 +50,13 @@ button {
 <body>
 
 <div id="auth">
-  <div class="card">
-    <h3>VChat Login</h3>
-    <input id="email" placeholder="Email">
-    <input id="password" type="password">
-    <button onclick="signup()">Sign Up</button>
-    <button onclick="login()">Login</button>
-  </div>
+  <input id="email" placeholder="Email">
+  <input id="password" type="password">
+  <button onclick="signup()">Sign Up</button>
+  <button onclick="login()">Login</button>
 </div>
 
-<div id="profile" style="display:none;">
-  <div class="card">
-    <h3>Create Profile</h3>
-    <input id="username">
-    <input id="pfp" placeholder="PFP URL">
-    <button onclick="saveProfile()">Continue</button>
-  </div>
-</div>
-
-<div id="sidebar">
-  <b>Modes</b><br>
-  <button onclick="setMode('global')">🌍 Global</button>
-  <button onclick="setMode('dm')">📩 DM</button>
-  <hr>
-  <div id="usersList"></div>
-</div>
-
-<div id="main">
-  <div id="topbar">
-    <span>VChat</span>
-    <span id="onlineCount">0 online</span>
-  </div>
-
+<div id="main" style="display:none;">
   <div id="messages"></div>
 
   <form id="form">
@@ -145,12 +65,13 @@ button {
   </form>
 </div>
 
-<!-- ✅ Firebase FIRST -->
+<!-- ✅ LOAD FIREBASE FIRST (THIS FIXES EVERYTHING) -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
 <script>
+/* INIT FIREBASE */
 const firebaseConfig = {
   apiKey: "AIzaSyCvzWuH2c62LJz4xUZCzhXhRjrW-7Do8Yk",
   authDomain: "vchat-8d791.firebaseapp.com",
@@ -162,160 +83,54 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-let userData = {};
-let mode = "global";
-let currentDM = null;
-
 /* AUTH */
 function signup(){
-  auth.createUserWithEmailAndPassword(email.value,password.value)
-    .then(u=>u.user.sendEmailVerification());
+  auth.createUserWithEmailAndPassword(email.value,password.value);
 }
 
 function login(){
   auth.signInWithEmailAndPassword(email.value,password.value);
 }
 
-/* PROFILE */
-async function saveProfile(){
-  await db.collection("users").doc(auth.currentUser.uid).set({
-    username: username.value,
-    pfp: pfp.value
-  });
-  profile.style.display="none";
-  startApp();
-}
-
 /* AUTH STATE */
-auth.onAuthStateChanged(async user=>{
+auth.onAuthStateChanged(user=>{
   if(user){
-    if(!user.emailVerified){
-      auth.signOut();
-      return;
-    }
-
-    const doc = await db.collection("users").doc(user.uid).get();
-
-    if(!doc.exists){
-      profile.style.display="flex";
-    } else {
-      userData = doc.data();
-      auth.style.display="none";
-      startApp();
-    }
+    document.getElementById("auth").style.display="none";
+    document.getElementById("main").style.display="flex";
+    listenMessages();
   }
 });
-
-/* START */
-function startApp(){
-  trackOnline();
-  listenMessages();
-  loadUsers();
-}
-
-/* ONLINE */
-function trackOnline(){
-  const ref = db.collection("online").doc(auth.currentUser.uid);
-  ref.set({email: auth.currentUser.email});
-  window.addEventListener("beforeunload",()=>ref.delete());
-
-  db.collection("online").onSnapshot(snap=>{
-    onlineCount.textContent = snap.size + " online";
-  });
-}
-
-/* USERS LIST */
-function loadUsers(){
-  db.collection("users").onSnapshot(snap=>{
-    usersList.innerHTML="<b>Users</b><br>";
-    snap.forEach(doc=>{
-      const d=doc.data();
-      usersList.innerHTML += 
-        `<div onclick="openDM('${doc.id}')">${d.username}</div>`;
-    });
-  });
-}
-
-/* DM */
-function openDM(uid){
-  mode="dm";
-  currentDM=uid;
-  listenMessages();
-}
-
-/* MODE */
-function setMode(m){
-  mode=m;
-  listenMessages();
-}
 
 /* SEND */
 form.addEventListener("submit", async e=>{
   e.preventDefault();
   if(!input.value) return;
 
-  if(mode==="global"){
-    await db.collection("messages").add({
-      ...userData,
-      text: input.value,
-      uid: auth.currentUser.uid,
-      time: Date.now()
-    });
-  }
-
-  if(mode==="dm" && currentDM){
-    await db.collection("dms").add({
-      from: auth.currentUser.uid,
-      to: currentDM,
-      text: input.value,
-      time: Date.now()
-    });
-  }
+  await db.collection("messages").add({
+    text: input.value,
+    time: Date.now()
+  });
 
   input.value="";
 });
 
 /* LISTEN */
 function listenMessages(){
-  if(mode==="global"){
-    db.collection("messages").orderBy("time")
-    .onSnapshot(snap=>{
-      messages.innerHTML="";
-      snap.forEach(doc=>{
-        const m=doc.data();
+  db.collection("messages").orderBy("time")
+  .onSnapshot(snap=>{
+    messages.innerHTML="";
+    snap.forEach(doc=>{
+      const m = doc.data();
 
-        const div=document.createElement("div");
-        div.className="msg";
+      const div=document.createElement("div");
+      div.className="msg";
+      div.textContent = m.text;
 
-        div.innerHTML=`
-          <img src="${m.pfp||'https://via.placeholder.com/40'}" width="40" style="border-radius:50%">
-          <div class="msg-content">
-            <b>${m.username}</b><br>
-            ${m.text}
-            ${m.uid===auth.currentUser.uid ? `
-              <br>
-              <button onclick="editMsg('${doc.id}','${m.text}')">Edit</button>
-              <button onclick="deleteMsg('${doc.id}')">Delete</button>
-            ` : ""}
-          </div>
-        `;
-
-        messages.appendChild(div);
-      });
-      messages.scrollTop = messages.scrollHeight;
+      messages.appendChild(div);
     });
-  }
-}
 
-/* EDIT / DELETE */
-function deleteMsg(id){
-  db.collection("messages").doc(id).delete();
-}
-
-function editMsg(id, oldText){
-  const newText = prompt("Edit:", oldText);
-  if(!newText) return;
-  db.collection("messages").doc(id).update({text:newText});
+    messages.scrollTop = messages.scrollHeight;
+  });
 }
 </script>
 
